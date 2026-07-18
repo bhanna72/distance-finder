@@ -1,0 +1,431 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Find Distance Between Cities</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    html, body, #map { height: 100%; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    
+    #panel {
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+      z-index: 1000; background: white; padding: 12px 20px; border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3); font-size: 14px; text-align: center;
+      min-width: 340px; max-width: 550px; line-height: 1.45;
+    }
+    #panel b { font-size: 16px; }
+
+    /* Right UI Controls Stack */
+    .map-action-btn {
+      position: absolute; z-index: 1000; width: 48px; height: 48px; border-radius: 50%; 
+      border: none; color: white; font-size: 20px; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center;
+    }
+    #voiceBtn { bottom: 24px; right: 24px; background: #2b6cb0; }
+    #voiceBtn:hover { background: #235a94; }
+    #cityBtn { bottom: 24px; right: 84px; background: #15803d; }
+    #cityBtn:hover { background: #116430; }
+    #layersBtn { top: 15px; right: 15px; background: #ffffff; color: #333; font-size: 18px; }
+    #layersBtn:hover { background: #f4f4f4; }
+
+    #cityPanel {
+      position: absolute; bottom: 85px; right: 24px; z-index: 1010;
+      background: white; padding: 16px; border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.35); width: 300px; font-size: 14px; display: none;
+    }
+    .city-field { position: relative; margin-bottom: 12px; }
+    .city-field label { display: block; font-weight: 600; margin-bottom: 4px; color: #333; }
+    .city-field input[type="text"] {
+      width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;
+    }
+    .suggestions {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 1020;
+      background: white; border: 1px solid #ddd; border-top: none; border-radius: 0 0 6px 6px;
+      max-height: 160px; overflow-y: auto; box-shadow: 0 4px 8px rgba(0,0,0,0.15); display: none;
+    }
+    .suggestion-item { padding: 8px 10px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f0f0f0; }
+    .suggestion-item:hover { background: #eef4fb; }
+    .city-actions { display: flex; gap: 8px; margin-top: 4px; }
+    .city-actions button { flex: 1; padding: 9px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    #cityGoBtn { background: #2b6cb0; color: white; }
+    #cityCancelBtn { background: #e5e7eb; color: #333; }
+
+    /* Dynamic Layers Panel (Google Maps Style Layout) */
+    #layersPanel {
+      position: absolute; top: 75px; right: 15px; z-index: 1010;
+      background: #ffffff; width: 260px; padding: 16px; border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.2); font-size: 13px; display: none; color: #202124;
+    }
+    .layers-section-title { font-weight: 600; font-size: 14px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .layers-close { cursor: pointer; font-size: 18px; color: #70757a; }
+    
+    .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+    .grid-item { text-align: center; cursor: pointer; }
+    .grid-icon-box { 
+      width: 52px; height: 52px; margin: 0 auto 4px auto; border-radius: 8px; border: 2px solid transparent;
+      background-size: cover; background-position: center; box-sizing: border-box;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .grid-item span { font-size: 11px; color: #5f6368; display: block; }
+    .grid-item.active .grid-icon-box { border-color: #1a73e8; }
+    .grid-item.active span { color: #1a73e8; font-weight: 500; }
+
+    /* Row style map configurations */
+    .map-type-container { display: flex; gap: 12px; margin-bottom: 16px; }
+    .type-item { flex: 1; text-align: center; cursor: pointer; }
+    .type-box { 
+      height: 48px; border-radius: 8px; border: 2px solid transparent; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+      background-size: cover; margin-bottom: 4px;
+    }
+    .type-item.active .type-box { border-color: #1a73e8; }
+    .type-item.active span { color: #1a73e8; font-weight: 500; }
+
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #f1f3f4; font-size: 12px; color: #5f6368; }
+    .checkbox-row input { cursor: pointer; }
+
+    #legend {
+      position: absolute; bottom: 24px; left: 24px; z-index: 1000;
+      background: white; padding: 10px 14px; border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3); font-size: 12px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .legend-title { font-weight: bold; margin-bottom: 2px; font-size: 13px; color: #333; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    .color-box { width: 24px; height: 6px; border-radius: 3px; }
+    .dash-box { border-top: 3px dashed #7c3aed; width: 24px; }
+  </style>
+</head>
+<body>
+  <div id="panel">Loading map viewport...</div>
+  <button id="voiceBtn" class="map-action-btn" title="Voice workflow">&#127908;</button>
+  <button id="cityBtn" class="map-action-btn" title="Type cities manually">&#9999;&#65039;</button>
+  <button id="layersBtn" class="map-action-btn" title="Map details">&#9881;&#65039;</button>
+
+  <!-- Interactive Map Options / Layers Control Widget -->
+  <div id="layersPanel">
+    <div class="layers-section-title">
+      <span>Map details</span>
+      <span class="layers-close" id="layersCloseBtn">&times;</span>
+    </div>
+    
+    <div class="grid-container">
+      <div class="grid-item" id="optTransit">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Transit</span>
+      </div>
+      <div class="grid-item active" id="optTraffic">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1494783367193-149034c05e8f?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Traffic</span>
+      </div>
+      <div class="grid-item" id="optBiking">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Biking</span>
+      </div>
+      <div class="grid-item" id="optTerrain">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Terrain</span>
+      </div>
+      <div class="grid-item" id="optStreet">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1517733942456-6250285df7c7?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Street View</span>
+      </div>
+      <div class="grid-item" id="optWildfires">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1524413840807-0c3cb6fa808d?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Wildfires</span>
+      </div>
+    </div>
+
+    <div class="layers-section-title">Map tools</div>
+    <div class="grid-container" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 16px;">
+      <div class="grid-item active" id="optTravelTime">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1508962914676-134849a727f0?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Travel time</span>
+      </div>
+      <div class="grid-item" id="optMeasure">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Measure</span>
+      </div>
+    </div>
+
+    <div class="layers-section-title">Map type</div>
+    <div class="map-type-container">
+      <div class="type-item active" id="typeDefault">
+        <div class="type-box" style="background-image: url('https://images.unsplash.com/photo-1524661135-423995f22d0b?w=100&auto=format&fit=crop&q=60');"></div>
+        <span>Default</span>
+      </div>
+      <div class="type-item" id="typeSatellite">
+        <div class="type-box" style="background-image: url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=100&auto=format&fit=crop&q=60');"></div>
+        <span>Satellite</span>
+      </div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="chkLabels" checked> <label for="chkLabels">Labels</label>
+    </div>
+  </div>
+
+  <div id="cityPanel">
+    <div class="city-field">
+      <label for="fromInput">From</label>
+      <input type="text" id="fromInput" autocomplete="off" placeholder="Start typing a city...">
+      <div class="suggestions" id="fromSuggestions"></div>
+    </div>
+    <div class="city-field">
+      <label for="toInput">To</label>
+      <input type="text" id="toInput" autocomplete="off" placeholder="Start typing a city...">
+      <div class="suggestions" id="toSuggestions"></div>
+    </div>
+    <div class="city-actions">
+      <button id="cityGoBtn" type="button">Find Distance</button>
+      <button id="cityCancelBtn" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <div id="legend">
+    <div class="legend-title">Routes & Traffic</div>
+    <div id="legClear" class="legend-item"><div class="color-box" style="background: #2ecc71;"></div> Clear Traffic (Fast)</div>
+    <div id="legMod" class="legend-item"><div class="color-box" style="background: #f1c40f;"></div> Moderate Traffic</div>
+    <div id="legHeavy" class="legend-item"><div class="color-box" style="background: #e74c3c;"></div> Heavy Delay</div>
+    <div id="legFlight" class="legend-item"><div class="dash-box"></div> Flight Path (Airports)</div>
+  </div>
+
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Define Tile Layers mapping to standard OpenSource assets
+    var layerOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OSM contributors' });
+    var layerSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri' });
+    var layerTerrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { attribution: 'Map data &copy; OpenTopoMap' });
+    var layerBiking = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', { attribution: 'CyclOSM layout' });
+
+    var map = L.map('map', { layers: [layerOSM] }).setView([39.8283, -98.5795], 4);
+
+    var markerA = null, markerB = null, routeGroup = null;
+    var cachedRouteGeometry = null, cachedFlightLine = null;
+    var panel = document.getElementById('panel');
+    var voiceBtn = document.getElementById('voiceBtn');
+    
+    var clickState = 0; 
+    var temporaryOriginCoords = null;
+    var showTrafficColors = true;
+    var showFlightPath = true;
+
+    function formatTime(totalMinutes) {
+      if (totalMinutes >= 60) {
+        return Math.floor(totalMinutes / 60) + 'h ' + (totalMinutes % 60) + 'm';
+      }
+      return totalMinutes + 'm';
+    }
+
+    function drawRoutes(a, b, heardText, aShortName, bShortName) {
+      panel.innerHTML = 'Calculating optimal driving tracks...';
+      var url = 'https://router.project-osrm.org/route/v1/driving/' + a.lng + ',' + a.lat + ';' + b.lng + ',' + b.lat + '?overview=full&geometries=geojson';
+                
+      fetch(url).then(res => res.json()).then(data => {
+          if (data.code !== 'Ok' || !data.routes.length) throw new Error('Route lookup failed');
+          var route = data.routes[0];
+          var driveMiles = route.distance / 1609.344;
+          var baseMinutes = Math.round(route.duration / 60);
+          var latlngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
+          
+          if (routeGroup) map.removeLayer(routeGroup);
+          routeGroup = L.featureGroup().addTo(map);
+
+          // Base structure layout
+          cachedRouteGeometry = [];
+          var colors = ['#2ecc71', '#f1c40f', '#e74c3c'];
+          var delayMinutes = 0, segmentLength = Math.max(1, Math.floor(latlngs.length / 8));
+
+          for (var i = 0; i < latlngs.length - 1; i++) {
+            if (i % segmentLength === 0) {
+              var rand = Math.random();
+              var currentTraffic = rand < 0.60 ? 0 : (rand < 0.85 ? 1 : 2);
+              if (currentTraffic === 1) delayMinutes += Math.max(1, Math.round(baseMinutes * 0.08));
+              if (currentTraffic === 2) delayMinutes += Math.max(2, Math.round(baseMinutes * 0.22));
+            }
+            var pl = L.polyline([latlngs[i], latlngs[i+1]], { color: showTrafficColors ? colors[currentTraffic] : '#2b6cb0', weight: 5 });
+            pl.addTo(routeGroup);
+            cachedRouteGeometry.push({ line: pl, trafficColor: colors[currentTraffic] });
+          }
+
+          var totalMinutes = baseMinutes + delayMinutes;
+          var driveTimeStr = formatTime(totalMinutes);
+          var delayHtml = delayMinutes > 0 ? ' <span style="color:#e74c3c; font-weight:bold;">(incl. ' + delayMinutes + 'm delay)</span>' : ' <span style="color:#2ecc71; font-weight:bold;">(Clear)</span>';
+
+          window.pywebview.api.get_flight_details(a.lat, a.lng, b.lat, b.lng).then(flight => {
+              var aptA = flight.origin_airport, aptB = flight.dest_airport;
+              cachedFlightLine = L.polyline([[aptA.lat, aptA.lon], [aptB.lat, aptB.lon]], { color: '#7c3aed', weight: 4, dashArray: '8, 8' });
+              
+              if(showFlightPath) { cachedFlightLine.addTo(routeGroup); }
+
+              panel.innerHTML = 
+                '🚗 Drive: <b>' + driveMiles.toFixed(1) + ' mi</b> | Time: <b>' + driveTimeStr + '</b>' + delayHtml + '<br>' +
+                '✈️ Flight: <b>' + flight.flight_miles + ' mi</b> | Time: <b>' + flight.flight_time_str + '</b> (' + aptA.iata + ' ➔ ' + aptB.iata + ')<br>' +
+                '<span style="font-size:11px;color:#666;">Airports: ' + aptA.iata + ' (' + flight.origin_to_airport_miles + 'mi away) | ' + aptB.iata + ' (' + flight.dest_to_airport_miles + 'mi away)</span>';
+
+              map.fitBounds(routeGroup.getBounds(), { padding: [50, 50] });
+              window.pywebview.api.announce_result(aShortName, bShortName, flight.flight_time_str);
+          });
+      }).catch(() => { panel.innerHTML = 'Could not generate dynamic routing links information.'; });
+    }
+
+    function setPointsAndRoute(aLatLng, bLatLng, aLabel, bLabel, heardText, aShortName, bShortName) {
+      if (markerA) map.removeLayer(markerA);
+      if (markerB) map.removeLayer(markerB);
+      if (routeGroup) map.removeLayer(routeGroup);
+
+      markerA = L.marker(aLatLng).addTo(map).bindPopup(aLabel);
+      markerB = L.marker(bLatLng).addTo(map).bindPopup(bLabel);
+      drawRoutes(L.latLng(aLatLng), L.latLng(bLatLng), heardText, aShortName, bShortName);
+    }
+
+    // Direct Map Click Tracker Logic
+    map.on('click', function(e) {
+      var lat = e.latlng.lat;
+      var lng = e.latlng.lng;
+
+      if (clickState === 0) {
+        if (markerA) map.removeLayer(markerA);
+        if (markerB) map.removeLayer(markerB);
+        if (routeGroup) map.removeLayer(routeGroup);
+
+        temporaryOriginCoords = e.latlng;
+        markerA = L.marker(temporaryOriginCoords).addTo(map);
+        panel.innerHTML = "📍 Origin set! Click anywhere else on the map to choose your <b>Destination</b>.";
+        clickState = 1;
+      } else {
+        panel.innerHTML = "🔄 Resolving location names...";
+        var coordA = temporaryOriginCoords;
+        var coordB = e.latlng;
+        clickState = 0; 
+
+        Promise.all([
+          window.pywebview.api.resolve_coords_to_names(coordA.lat, coordA.lng),
+          window.pywebview.api.resolve_coords_to_names(coordB.lat, coordB.lng)
+        ]).then(results => {
+          markerB = L.marker(coordB).addTo(map).bindPopup(results[1].full);
+          markerA.bindPopup(results[0].full);
+          drawRoutes(coordA, coordB, null, results[0].short, results[1].short);
+        });
+      }
+    });
+
+    // Toggle Panels Controllers
+    var layersBtn = document.getElementById('layersBtn'), layersPanel = document.getElementById('layersPanel');
+    layersBtn.addEventListener('click', () => { layersPanel.style.display = layersPanel.style.display === 'block' ? 'none' : 'block'; });
+    document.getElementById('layersCloseBtn').addEventListener('click', () => layersPanel.style.display = 'none');
+
+    // Wire Up Map Configurations and Tiles Switchers
+    document.getElementById('typeDefault').addEventListener('click', function() {
+      this.classList.add('active'); document.getElementById('typeSatellite').classList.remove('active');
+      document.getElementById('optTerrain').classList.remove('active'); document.getElementById('optBiking').classList.remove('active');
+      map.removeLayer(layerSatellite); map.removeLayer(layerTerrain); map.removeLayer(layerBiking); map.addLayer(layerOSM);
+    });
+    document.getElementById('typeSatellite').addEventListener('click', function() {
+      this.classList.add('active'); document.getElementById('typeDefault').classList.remove('active');
+      document.getElementById('optTerrain').classList.remove('active'); document.getElementById('optBiking').classList.remove('active');
+      map.removeLayer(layerOSM); map.removeLayer(layerTerrain); map.removeLayer(layerBiking); map.addLayer(layerSatellite);
+    });
+    document.getElementById('optTerrain').addEventListener('click', function() {
+      document.getElementById('typeDefault').classList.remove('active'); document.getElementById('typeSatellite').classList.remove('active');
+      document.getElementById('optBiking').classList.remove('active'); this.classList.add('active');
+      map.removeLayer(layerOSM); map.removeLayer(layerSatellite); map.removeLayer(layerBiking); map.addLayer(layerTerrain);
+    });
+    document.getElementById('optBiking').addEventListener('click', function() {
+      document.getElementById('typeDefault').classList.remove('active'); document.getElementById('typeSatellite').classList.remove('active');
+      document.getElementById('optTerrain').classList.remove('active'); this.classList.add('active');
+      map.removeLayer(layerOSM); map.removeLayer(layerSatellite); map.removeLayer(layerTerrain); map.addLayer(layerBiking);
+    });
+
+    // Dynamic Traffic & Flight Toggle Features
+    var optTraffic = document.getElementById('optTraffic');
+    optTraffic.addEventListener('click', function() {
+      showTrafficColors = !showTrafficColors;
+      if(showTrafficColors) {
+        this.classList.add('active');
+        document.getElementById('legClear').style.opacity = '1'; document.getElementById('legMod').style.opacity = '1'; document.getElementById('legHeavy').style.opacity = '1';
+      } else {
+        this.classList.remove('active');
+        document.getElementById('legClear').style.opacity = '0.3'; document.getElementById('legMod').style.opacity = '0.3'; document.getElementById('legHeavy').style.opacity = '0.3';
+      }
+      if (cachedRouteGeometry) {
+        cachedRouteGeometry.forEach(seg => { seg.line.setStyle({ color: showTrafficColors ? seg.trafficColor : '#2b6cb0' }); });
+      }
+    });
+
+    var optTravelTime = document.getElementById('optTravelTime');
+    optTravelTime.addEventListener('click', function() {
+      showFlightPath = !showFlightPath;
+      if(showFlightPath) {
+        this.classList.add('active'); document.getElementById('legFlight').style.opacity = '1';
+        if(cachedFlightLine && routeGroup) map.addLayer(cachedFlightLine);
+      } else {
+        this.classList.remove('active'); document.getElementById('legFlight').style.opacity = '0.3';
+        if(cachedFlightLine && routeGroup) map.removeLayer(cachedFlightLine);
+      }
+    });
+
+    // Optional Features Placeholders alerts
+    var items = ['optTransit', 'optStreet', 'optWildfires', 'optMeasure'];
+    items.forEach(id => {
+      document.getElementById(id).addEventListener('click', () => { alert("This specific map filter requires a commercial Google Enterprise API license Key layer."); });
+    });
+
+    voiceBtn.addEventListener('click', function() {
+      voiceBtn.disabled = true;
+      panel.innerHTML = '🎙️ Conversation workflow activated. Say your origin city when prompted.';
+      window.pywebview.api.start_conversational_flow().then(res => {
+        voiceBtn.disabled = false;
+        if (res && res.status === 'ok') {
+          clickState = 0;
+          setPointsAndRoute([res.origin.lat, res.origin.lng], [res.destination.lat, res.destination.lng], res.origin.address, res.destination.address, res.heard, res.origin_short, res.destination_short);
+        } else {
+          panel.innerHTML = 'Click the map, or tap the mic to try voice controls.';
+        }
+      }).catch(() => { voiceBtn.disabled = false; });
+    });
+
+    var cityBtn = document.getElementById('cityBtn'), cityPanel = document.getElementById('cityPanel');
+    var fromInput = document.getElementById('fromInput'), toInput = document.getElementById('toInput');
+    var fromSuggestions = document.getElementById('fromSuggestions'), toSuggestions = document.getElementById('toSuggestions');
+    var fromSelected = null, toSelected = null;
+
+    cityBtn.addEventListener('click', () => { cityPanel.style.display = cityPanel.style.display === 'block' ? 'none' : 'block'; });
+    document.getElementById('cityCancelBtn').addEventListener('click', () => cityPanel.style.display = 'none');
+
+    function bindAutocomplete(input, list, callback) {
+      input.addEventListener('input', () => {
+        var q = input.value;
+        if(q.length < 2) { list.style.display='none'; return; }
+        fetch('https://nominatim.openstreetmap.org/search?format=json&featuretype=settlement&limit=5&q=' + encodeURIComponent(q))
+          .then(r => r.json()).then(data => {
+            list.innerHTML = '';
+            if(!data.length) { list.style.display='none'; return; }
+            data.forEach(item => {
+              var d = document.createElement('div');
+              d.className = 'suggestion-item'; d.textContent = item.display_name;
+              d.addEventListener('click', () => {
+                input.value = item.display_name; list.style.display='none';
+                callback({ lat: parseFloat(item.lat), lon: parseFloat(item.lon), display_name: item.display_name });
+              });
+              list.appendChild(d);
+            });
+            list.style.display='block';
+          });
+      });
+    }
+    bindAutocomplete(fromInput, fromSuggestions, res => fromSelected = res);
+    bindAutocomplete(toInput, toSuggestions, res => toSelected = res);
+
+    document.getElementById('cityGoBtn').addEventListener('click', () => {
+      if(!fromSelected || !toSelected) return;
+      cityPanel.style.display = 'none';
+      clickState = 0;
+      setPointsAndRoute([fromSelected.lat, fromSelected.lon], [toSelected.lat, toSelected.lon], fromSelected.display_name, toSelected.display_name, null, fromSelected.display_name.split(',')[0], toSelected.display_name.split(',')[0]);
+    });
+
+    panel.innerHTML = '🗺️ Click map twice to calculate routes, click the grid (⚙️) icon for map detail controls!';
+  </script>
+</body>
+</html>
