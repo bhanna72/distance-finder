@@ -1,0 +1,996 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Find Distance Between Cities</title>
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  
+  <style>
+    :root {
+      --bg-glass: rgba(255, 255, 255, 0.85);
+      --border-glass: rgba(255, 255, 255, 0.25);
+      --blur-glass: blur(12px);
+      --shadow-premium: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+      --primary-color: #1a73e8;
+      --text-main: #202124;
+    }
+
+    html, body, #map { 
+      height: 100%; 
+      margin: 0; 
+      padding: 0; 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+    }
+    body { overscroll-behavior: none; background: #f8f9fa; }
+
+    /* Premium Glassmorphism Summary Panel */
+    #panel {
+      position: absolute; 
+      top: max(16px, env(safe-area-inset-top)); 
+      left: 50%; 
+      transform: translateX(-50%);
+      z-index: 1000; 
+      background: var(--bg-glass);
+      backdrop-filter: var(--blur-glass);
+      -webkit-backdrop-filter: var(--blur-glass);
+      padding: 14px 24px; 
+      border-radius: 16px;
+      border: 1px solid var(--border-glass);
+      box-shadow: var(--shadow-premium); 
+      font-size: 14px; 
+      text-align: center;
+      width: 90vw; 
+      max-width: 580px; 
+      line-height: 1.5;
+      color: var(--text-main);
+      transition: all 0.3s ease;
+    }
+    #panel b { font-size: 16px; color: #111; }
+
+    /* Floating Control Dock */
+    .control-dock {
+      position: absolute;
+      bottom: max(24px, env(safe-area-inset-bottom));
+      right: 24px;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .map-action-btn {
+      width: 52px; 
+      height: 52px; 
+      border-radius: 50%;
+      border: 1px solid var(--border-glass); 
+      color: white; 
+      cursor: pointer;
+      box-shadow: var(--shadow-premium); 
+      display: flex; 
+      align-items: center; 
+      justify-content: center;
+      touch-action: manipulation;
+      transition: all 0.2s ease-in-out;
+    }
+    .map-action-btn svg {
+      width: 22px;
+      height: 22px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+    .map-action-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 20px rgba(0,0,0,0.2); }
+    
+    #voiceBtn { background: #1a73e8; }
+    #voiceBtn:hover { background: #155cb4; }
+    #voiceBtn.voice-active { background: #ea4335; animation: pulse 1.5s infinite; }
+    #cityBtn { background: #34a853; }
+    #cityBtn:hover { background: #2b8c44; }
+    #layersBtn { background: white; color: #5f6368; }
+    #layersBtn:hover { background: #f1f3f4; color: var(--text-main); }
+
+    /* Glass Panels */
+    #cityPanel, #layersPanel {
+      position: absolute; 
+      z-index: 1010;
+      background: var(--bg-glass);
+      backdrop-filter: var(--blur-glass);
+      -webkit-backdrop-filter: var(--blur-glass);
+      padding: 20px; 
+      border-radius: 16px;
+      border: 1px solid var(--border-glass);
+      box-shadow: var(--shadow-premium);
+      display: none;
+      color: var(--text-main);
+    }
+
+    #cityPanel {
+      bottom: calc(95px + env(safe-area-inset-bottom)); 
+      right: 24px;
+      width: 320px; 
+      max-width: 88vw; 
+    }
+
+    #layersPanel {
+      top: calc(85px + env(safe-area-inset-top)); 
+      right: 24px;
+      width: 280px; 
+      max-width: 88vw; 
+    }
+
+    /* Form Styles */
+    .city-field { position: relative; margin-bottom: 16px; }
+    .city-field label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #3c4043; }
+    .city-field input[type="text"] {
+      width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px;
+      background: rgba(255,255,255,0.7); transition: border-color 0.2s;
+    }
+    .city-field input[type="text"]:focus { border-color: var(--primary-color); outline: none; background: white; }
+    
+    .suggestions {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 1020;
+      background: white; border-radius: 8px; max-height: 180px; overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-top: 4px; display: none;
+    }
+    .suggestion-item { padding: 10px 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #f1f3f4; }
+    .suggestion-item:hover { background: #e8f0fe; color: var(--primary-color); }
+    
+    .city-actions { display: flex; gap: 10px; margin-top: 8px; }
+    .city-actions button { flex: 1; padding: 11px 0; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+    #cityGoBtn { background: var(--primary-color); color: white; }
+    #cityCancelBtn { background: #f1f3f4; color: #3c4043; }
+
+    /* Map Details Grid */
+    .layers-section-title { font-weight: 600; font-size: 14px; margin: 14px 0 10px 0; display: flex; justify-content: space-between; align-items: center; color: #3c4043; }
+    .layers-section-title:first-child { margin-top: 0; }
+    .layers-close { cursor: pointer; font-size: 22px; color: #70757a; line-height: 1; }
+
+    .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 16px; }
+    .grid-item { text-align: center; cursor: pointer; }
+    .grid-icon-box {
+      width: 56px; height: 56px; margin: 0 auto 6px auto; border-radius: 12px; border: 2px solid transparent;
+      background-size: cover; background-position: center; box-sizing: border-box;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1); transition: all 0.2s;
+    }
+    .grid-item span { font-size: 11px; color: #5f6368; display: block; }
+    .grid-item.active .grid-icon-box { border-color: var(--primary-color); transform: scale(1.05); }
+    .grid-item.active span { color: var(--primary-color); font-weight: 600; }
+
+    .map-type-container { display: flex; gap: 12px; margin-bottom: 16px; }
+    .type-item { flex: 1; text-align: center; cursor: pointer; }
+    .type-box {
+      height: 52px; border-radius: 12px; border: 2px solid transparent; box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      background-size: cover; margin-bottom: 6px; transition: all 0.2s;
+    }
+    .type-item.active .type-box { border-color: var(--primary-color); }
+    .type-item.active span { color: var(--primary-color); font-weight: 600; }
+
+    .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.08); font-size: 13px; color: #5f6368; }
+    .checkbox-row input { cursor: pointer; }
+
+    /* Legend Box */
+    #legend {
+      position: absolute; bottom: max(24px, env(safe-area-inset-bottom)); left: 24px; z-index: 1000;
+      background: var(--bg-glass); backdrop-filter: var(--blur-glass); -webkit-backdrop-filter: var(--blur-glass);
+      padding: 12px 16px; border-radius: 14px; border: 1px solid var(--border-glass);
+      box-shadow: var(--shadow-premium); font-size: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 46vw;
+    }
+    .legend-title { font-weight: bold; margin-bottom: 4px; font-size: 13px; color: #3c4043; }
+    .legend-item { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+    .color-box { width: 22px; height: 6px; border-radius: 3px; flex: none; }
+    .dash-box { border-top: 3px dashed #7c3aed; width: 22px; flex: none; }
+
+    /* Layout for Expandable Navigation Directions Drawer */
+    #directionsDrawer {
+      position: absolute; bottom: 0; left: 50%; transform: translateX(-50%) translateY(100%);
+      width: 100%; max-width: 580px; height: 35vh; background: white; z-index: 1005;
+      border-top-left-radius: 20px; border-top-right-radius: 20px; box-shadow: 0 -4px 20px rgba(0,0,0,0.15);
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); padding: 16px; box-sizing: border-box;
+    }
+    #directionsDrawer.open { transform: translateX(-50%) translateY(0); }
+    .drawer-handle { width: 40px; height: 5px; background: #ccc; border-radius: 3px; margin: 0 auto 12px auto; cursor: pointer; }
+
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0.5); }
+      70% { box-shadow: 0 0 0 15px rgba(234, 67, 53, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(234, 67, 53, 0); }
+    }
+
+    @media (max-width: 480px) {
+      #panel { font-size: 12px; padding: 10px 16px; }
+      .control-dock { bottom: 16px; right: 16px; }
+      #legend { left: 16px; bottom: 16px; display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div id="panel">Loading map viewport...</div>
+
+  <!-- Integrated Control Dock with SVG icons -->
+  <div class="control-dock">
+    <button id="layersBtn" class="map-action-btn" title="Map details">
+      <svg viewBox="0 0 24 24"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+    </button>
+    <button id="cityBtn" class="map-action-btn" title="Type cities manually">
+      <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+    </button>
+    <button id="voiceBtn" class="map-action-btn" title="Voice workflow">
+      <svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v4M8 23h8"/></svg>
+    </button>
+  </div>
+
+  <!-- Map Layers Widget Layer -->
+  <div id="layersPanel">
+    <div class="layers-section-title">
+      <span>Map details</span>
+      <span class="layers-close" id="layersCloseBtn">&times;</span>
+    </div>
+
+    <div class="grid-container">
+      <div class="grid-item" id="optTransit">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Transit</span>
+      </div>
+      <div class="grid-item" id="optTraffic">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1494783367193-149034c05e8f?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Traffic</span>
+      </div>
+      <div class="grid-item" id="optBiking">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Biking</span>
+      </div>
+      <div class="grid-item" id="optTerrain">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Terrain</span>
+      </div>
+      <div class="grid-item" id="optStreet">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1517733942456-6250285df7c7?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Street View</span>
+      </div>
+      <div class="grid-item" id="optWildfires">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1524413840807-0c3cb6fa808d?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Wildfires</span>
+      </div>
+    </div>
+
+    <div class="layers-section-title">Map tools</div>
+    <div class="grid-container" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 16px;">
+      <div class="grid-item active" id="optTravelTime">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1508962914676-134849a727f0?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Travel time</span>
+      </div>
+      <div class="grid-item" id="optMeasure">
+        <div class="grid-icon-box" style="background-image: url('https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=80&auto=format&fit=crop&q=60');"></div>
+        <span>Measure</span>
+      </div>
+    </div>
+
+    <div class="layers-section-title">Map type</div>
+    <div class="map-type-container">
+      <div class="type-item active" id="typeDefault">
+        <div class="type-box" style="background-image: url('https://images.unsplash.com/photo-1524661135-423995f22d0b?w=100&auto=format&fit=crop&q=60');"></div>
+        <span>Default</span>
+      </div>
+      <div class="type-item" id="typeSatellite">
+        <div class="type-box" style="background-image: url('https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=100&auto=format&fit=crop&q=60');"></div>
+        <span>Satellite</span>
+      </div>
+    </div>
+
+    <div class="checkbox-row">
+      <input type="checkbox" id="chkLabels" checked> <label for="chkLabels">Labels</label>
+    </div>
+  </div>
+
+  <!-- Manual Entry Form -->
+  <div id="cityPanel">
+    <div class="city-field">
+      <label for="fromInput">From</label>
+      <input type="text" id="fromInput" autocomplete="off" placeholder="Start typing departure city...">
+      <div class="suggestions" id="fromSuggestions"></div>
+    </div>
+    <div class="city-field">
+      <label for="toInput">To</label>
+      <input type="text" id="toInput" autocomplete="off" placeholder="Start typing arrival city...">
+      <div class="suggestions" id="toSuggestions"></div>
+    </div>
+    <div class="city-actions">
+      <button id="cityGoBtn" type="button">Find Distance</button>
+      <button id="cityCancelBtn" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Map Legend -->
+  <div id="legend">
+    <div class="legend-title">Routes & Traffic</div>
+    <div id="legClear" class="legend-item" style="opacity:0.3;"><div class="color-box" style="background: #2ecc71;"></div> Clear Traffic (Fast)</div>
+    <div id="legMod" class="legend-item" style="opacity:0.3;"><div class="color-box" style="background: #f1c40f;"></div> Moderate Traffic</div>
+    <div id="legHeavy" class="legend-item" style="opacity:0.3;"><div class="color-box" style="background: #e74c3c;"></div> Heavy Delay</div>
+    <div id="legFlight" class="legend-item"><div class="dash-box"></div> Flight Path (Airports)</div>
+  </div>
+
+  <!-- Expandable Directions Drawer Stub -->
+  <div id="directionsDrawer">
+    <div class="drawer-handle" onclick="document.getElementById('directionsDrawer').classList.toggle('open')"></div>
+    <div class="layers-section-title" style="margin-top:0;">Driving Itinerary Navigation Steps</div>
+    <div style="color: #5f6368; font-size:13px;">Detailed route turn instructions parse container placeholder...</div>
+  </div>
+
+  <div id="map"></div>
+
+  <!-- Leaflet and App JS Core Logic Links -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    /* ==========================================================================
+       Fully client-side port of distance8.py -- no backend required.
+       Everything that used to be a Python API call (geocoding, reverse
+       geocoding, flight math, and the step-by-step voice workflow) now runs
+       directly in the browser.
+       ========================================================================== */
+
+    var NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
+
+    var MAJOR_AIRPORTS = [
+      {iata:"ATL", name:"Hartsfield–Jackson Atlanta Int'l", lat:33.6407, lon:-84.4277},
+      {iata:"LAX", name:"Los Angeles International", lat:33.9416, lon:-118.4085},
+      {iata:"ORD", name:"O'Hare International (Chicago)", lat:41.9742, lon:-87.9073},
+      {iata:"DFW", name:"Dallas/Fort Worth International", lat:32.8998, lon:-97.0403},
+      {iata:"DEN", name:"Denver International", lat:39.8561, lon:-104.6737},
+      {iata:"SFO", name:"San Francisco International", lat:37.6213, lon:-122.3790},
+      {iata:"JFK", name:"John F. Kennedy International", lat:40.6413, lon:-73.7781},
+      {iata:"SEA", name:"Seattle-Tacoma International", lat:47.4502, lon:-122.3088},
+      {iata:"LAS", name:"Harry Reid International (Las Vegas)", lat:36.0840, lon:-115.1537},
+      {iata:"MCO", name:"Orlando International", lat:28.4281, lon:-81.3160},
+      {iata:"EWR", name:"Newark Liberty International", lat:40.6895, lon:-74.1745},
+      {iata:"CLT", name:"Charlotte Douglas International", lat:35.2140, lon:-80.9473},
+      {iata:"PHX", name:"Phoenix Sky Harbor International", lat:33.4348, lon:-112.0080},
+      {iata:"IAH", name:"George Bush Intercontinental", lat:29.9902, lon:-95.3368},
+      {iata:"MIA", name:"Miami International", lat:25.7959, lon:-80.2870},
+      {iata:"BOS", name:"Logan International (Boston)", lat:42.3656, lon:-71.0096},
+      {iata:"MSP", name:"Minneapolis–Saint Paul Int'l", lat:44.8848, lon:-93.2223},
+      {iata:"DTW", name:"Detroit Metropolitan", lat:42.2162, lon:-83.3554},
+      {iata:"PHL", name:"Philadelphia International", lat:39.8729, lon:-75.2437},
+      {iata:"LHR", name:"London Heathrow (UK)", lat:51.4700, lon:-0.4543},
+      {iata:"CDG", name:"Charles de Gaulle (Paris)", lat:49.0097, lon:2.5479},
+      {iata:"HND", name:"Haneda Airport (Tokyo)", lat:35.5494, lon:139.7798},
+      {iata:"SYD", name:"Sydney Kingsford Smith (Australia)", lat:-33.9461, lon:151.1772},
+      {iata:"YYZ", name:"Toronto Pearson International", lat:43.6777, lon:-79.6248},
+      {iata:"SBA", name:"Santa Barbara Municipal", lat:34.4262, lon:-119.8415},
+      {iata:"SAN", name:"San Diego International", lat:32.7338, lon:-117.1933},
+      {iata:"SJC", name:"San Jose Mineta International", lat:37.3639, lon:-121.9289},
+      {iata:"OAK", name:"Oakland International", lat:37.7126, lon:-122.2197},
+      {iata:"SNA", name:"John Wayne (Orange County)", lat:33.6757, lon:-117.8682},
+      {iata:"BUR", name:"Hollywood Burbank", lat:34.2007, lon:-118.3587},
+      {iata:"ONT", name:"Ontario International", lat:34.0560, lon:-117.6012},
+      {iata:"FAT", name:"Fresno Yosemite International", lat:36.7762, lon:-119.7181},
+      {iata:"SMF", name:"Sacramento International", lat:38.6954, lon:-121.5908},
+      {iata:"PSP", name:"Palm Springs International", lat:33.8297, lon:-116.5070},
+      {iata:"RNO", name:"Reno-Tahoe International", lat:39.4991, lon:-119.7681},
+      {iata:"PDX", name:"Portland International", lat:45.5898, lon:-122.5951},
+      {iata:"SLC", name:"Salt Lake City International", lat:40.7899, lon:-111.9791},
+      {iata:"TUS", name:"Tucson International", lat:32.1161, lon:-110.9410},
+      {iata:"ABQ", name:"Albuquerque Sunport", lat:35.0402, lon:-106.6091},
+      {iata:"BOI", name:"Boise Airport", lat:43.5644, lon:-116.2228},
+      {iata:"AUS", name:"Austin-Bergstrom International", lat:30.1975, lon:-97.6664},
+      {iata:"SAT", name:"San Antonio International", lat:29.5337, lon:-98.4698},
+      {iata:"MSY", name:"Louis Armstrong New Orleans Int'l", lat:29.9934, lon:-90.2580},
+      {iata:"STL", name:"St. Louis Lambert International", lat:38.7487, lon:-90.3700},
+      {iata:"MCI", name:"Kansas City International", lat:39.2976, lon:-94.7139},
+      {iata:"OMA", name:"Eppley Airfield (Omaha)", lat:41.3032, lon:-95.8940},
+      {iata:"IND", name:"Indianapolis International", lat:39.7173, lon:-86.2944},
+      {iata:"CMH", name:"John Glenn Columbus International", lat:39.9980, lon:-82.8919},
+      {iata:"CVG", name:"Cincinnati/N. Kentucky Int'l", lat:39.0533, lon:-84.6630},
+      {iata:"PIT", name:"Pittsburgh International", lat:40.4915, lon:-80.2329},
+      {iata:"CLE", name:"Cleveland Hopkins International", lat:41.4117, lon:-81.8498},
+      {iata:"MKE", name:"Milwaukee Mitchell International", lat:42.9472, lon:-87.8966},
+      {iata:"BNA", name:"Nashville International", lat:36.1263, lon:-86.6774},
+      {iata:"MEM", name:"Memphis International", lat:35.0424, lon:-89.9767},
+      {iata:"RDU", name:"Raleigh-Durham International", lat:35.8801, lon:-78.7880},
+      {iata:"BWI", name:"Baltimore/Washington Int'l", lat:39.1774, lon:-76.6684},
+      {iata:"DCA", name:"Reagan National (Washington DC)", lat:38.8512, lon:-77.0402},
+      {iata:"IAD", name:"Washington Dulles International", lat:38.9531, lon:-77.4565},
+      {iata:"BDL", name:"Bradley International (Hartford)", lat:41.9389, lon:-72.6832},
+      {iata:"BUF", name:"Buffalo Niagara International", lat:42.9405, lon:-78.7322},
+      {iata:"TPA", name:"Tampa International", lat:27.9755, lon:-82.5332},
+      {iata:"FLL", name:"Fort Lauderdale-Hollywood Int'l", lat:26.0726, lon:-80.1527},
+      {iata:"JAX", name:"Jacksonville International", lat:30.4941, lon:-81.6879},
+      {iata:"HNL", name:"Honolulu International", lat:21.3245, lon:-157.9251},
+      {iata:"ANC", name:"Ted Stevens Anchorage Int'l", lat:61.1744, lon:-149.9964}
+    ];
+
+    var YES_WORDS = ["yes","yeah","yep","yup","correct","right","confirm","confirmed","sure","affirmative","ok","okay"];
+    var NO_WORDS = ["no","nope","wrong","incorrect","negative","nah","cancel"];
+
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+      var rEarthMiles = 3958.8;
+      var toRad = function(d) { return d * Math.PI / 180; };
+      var phi1 = toRad(lat1), phi2 = toRad(lat2);
+      var dPhi = toRad(lat2 - lat1);
+      var dLambda = toRad(lon2 - lon1);
+      var a = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
+      var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return rEarthMiles * c;
+    }
+
+    function formatFlightTime(totalMins) {
+      if (totalMins >= 60) { return Math.floor(totalMins / 60) + 'h ' + (totalMins % 60) + 'm'; }
+      return totalMins + 'm';
+    }
+
+    function getFlightDetails(lat1, lon1, lat2, lon2) {
+      var originApt = null, originDist = Infinity;
+      var destApt = null, destDist = Infinity;
+      MAJOR_AIRPORTS.forEach(function(apt) {
+        var d1 = haversineDistance(lat1, lon1, apt.lat, apt.lon);
+        if (d1 < originDist) { originDist = d1; originApt = apt; }
+        var d2 = haversineDistance(lat2, lon2, apt.lat, apt.lon);
+        if (d2 < destDist) { destDist = d2; destApt = apt; }
+      });
+      var flightMiles = haversineDistance(originApt.lat, originApt.lon, destApt.lat, destApt.lon);
+
+      var cruiseSpeed, buffer;
+      if (flightMiles < 100) { cruiseSpeed = 250.0; buffer = 15.0; }
+      else if (flightMiles < 500) { cruiseSpeed = 400.0; buffer = 20.0; }
+      else { cruiseSpeed = 510.0; buffer = 30.0; }
+
+      var airMins = (flightMiles / cruiseSpeed) * 60.0;
+      var totalMins = Math.round(airMins + buffer + 30.0);
+
+      return {
+        origin_airport: originApt,
+        origin_to_airport_miles: Math.round(originDist * 10) / 10,
+        dest_airport: destApt,
+        dest_to_airport_miles: Math.round(destDist * 10) / 10,
+        flight_miles: Math.round(flightMiles * 10) / 10,
+        flight_time_str: formatFlightTime(totalMins)
+      };
+    }
+
+    var userLocation = null;
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        function(pos) { userLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }; },
+        function() { },
+        { timeout: 8000, maximumAge: 600000 }
+      );
+    }
+
+    function sortUSFirst(results) {
+      var us = [], other = [];
+      results.forEach(function(r) {
+        var cc = r.address && r.address.country_code ? r.address.country_code.toLowerCase() : null;
+        if (cc === 'us') { us.push(r); } else { other.push(r); }
+      });
+      return us.concat(other);
+    }
+
+    function sortByRelevance(results) {
+      if (userLocation) {
+        return results.slice().sort(function(a, b) {
+          var da = haversineDistance(userLocation.lat, userLocation.lon, parseFloat(a.lat), parseFloat(a.lon));
+          var db = haversineDistance(userLocation.lat, userLocation.lon, parseFloat(b.lat), parseFloat(b.lon));
+          return da - db;
+        });
+      }
+      return sortUSFirst(results);
+    }
+
+    function rankResults(results, query) {
+      var q = (query || '').trim().toLowerCase();
+      if (!q) { return sortByRelevance(results); }
+      var strong = [], weak = [];
+      results.forEach(function(r) {
+        var name = (r.display_name || '').toLowerCase();
+        if (name.indexOf(q) === 0) { strong.push(r); } else { weak.push(r); }
+      });
+      return sortByRelevance(strong).concat(sortByRelevance(weak));
+    }
+
+    function searchPlaces(query, limit) {
+      var params = 'q=' + encodeURIComponent(query) + '&limit=' + (limit || 8) +
+        '&osm_tag=place:city&osm_tag=place:town&osm_tag=place:village&osm_tag=place:municipality&osm_tag=place:county&osm_tag=place:state&osm_tag=place:hamlet';
+      if (userLocation) { params += '&lat=' + userLocation.lat + '&lon=' + userLocation.lon; }
+      var url = 'https://photon.komoot.io/api/?' + params;
+      return fetch(url).then(function(res) { return res.json(); }).then(function(geojson) {
+        if (!geojson || !geojson.features || !geojson.features.length) { return []; }
+        return geojson.features.map(function(f) {
+          var p = f.properties || {};
+          var coords = f.geometry.coordinates;
+          var parts = [p.name, p.state, p.country].filter(Boolean);
+          return {
+            lat: coords[1],
+            lon: coords[0],
+            display_name: parts.join(', ') || p.name || query,
+            address: { country_code: p.countrycode ? p.countrycode.toLowerCase() : null }
+          };
+        });
+      }).catch(function() { return []; });
+    }
+
+    function geocode(place) {
+      return searchPlaces(place, 8).then(function(results) {
+        if (!results.length) { return null; }
+        var r = rankResults(results, place)[0];
+        return { lat: r.lat, lon: r.lon, display_name: r.display_name };
+      });
+    }
+
+    function reverseGeocode(lat, lon) {
+      var url = 'https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lon + '&zoom=10';
+      return fetch(url).then(function(res) { return res.json(); }).then(function(data) {
+        var address = data.address || {};
+        var city = address.city || address.town || address.village || address.county || 'Dropped Pin';
+        return { short: city, full: data.display_name || 'Selected Coordinate' };
+      }).catch(function() { return { short: 'Dropped Pin', full: 'Selected Coordinate' }; });
+    }
+
+    function speakText(text) {
+      return new Promise(function(resolve) {
+        if (!window.speechSynthesis) { resolve(); return; }
+        try {
+          window.speechSynthesis.cancel();
+          var utter = new SpeechSynthesisUtterance(text);
+          utter.rate = 1.0;
+          utter.onend = function() { resolve(); };
+          utter.onerror = function() { resolve(); };
+          window.speechSynthesis.speak(utter);
+        } catch (e) { resolve(); }
+      });
+    }
+
+    var SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+    function browserSupportsSTT() { return !!SpeechRecognitionCtor; }
+
+    var currentRecognition = null;
+    var voiceFlowActive = false;
+    var voiceFlowCanceled = false;
+    function VoiceCanceledError() {}
+
+    function recognizeSpeechSingle(phraseTimeoutMs) {
+      return new Promise(function(resolve) {
+        if (!SpeechRecognitionCtor) { resolve(null); return; }
+        var recognition = new SpeechRecognitionCtor();
+        currentRecognition = recognition;
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.maxAlternatives = 1;
+        var done = false;
+        var timer = setTimeout(function() {
+          if (!done) { done = true; try { recognition.stop(); } catch(e){} resolve(null); }
+        }, phraseTimeoutMs || 8000);
+
+        recognition.onresult = function(event) {
+          if (done) { return; }
+          done = true; clearTimeout(timer); currentRecognition = null;
+          resolve(event.results[0][0].transcript.trim());
+        };
+        recognition.onerror = function() { if (done) { return; } done = true; clearTimeout(timer); currentRecognition = null; resolve(null); };
+        recognition.onend = function() { if (!done) { done = true; clearTimeout(timer); currentRecognition = null; resolve(null); } };
+        try { recognition.start(); } catch (e) { clearTimeout(timer); currentRecognition = null; resolve(null); }
+      });
+    }
+
+    function containsAny(text, words) {
+      var lower = (text || '').toLowerCase();
+      return words.some(function(w) { return lower.indexOf(w) !== -1; });
+    }
+
+    function checkCanceled() {
+      if (voiceFlowCanceled) { throw new VoiceCanceledError(); }
+    }
+
+    async function startConversationalFlow() {
+      if (!browserSupportsSTT()) {
+        panel.innerHTML = 'Voice input isn\'t supported in this browser (Safari on iPhone/iPad does not offer speech recognition to web pages -- an Apple platform limitation). Use the pencil button to type cities instead.';
+        cityPanel.style.display = 'block';
+        return { status: 'error' };
+      }
+
+      try {
+        var originData = null;
+        while (!originData) {
+          await speakText('What is the origin city?');
+          checkCanceled();
+          panel.innerHTML = '🎙️ Listening for the origin city... <span style="font-size:11px;color:#999;">(tap mic to cancel)</span>';
+          var rawOrigin = await recognizeSpeechSingle(8000);
+          checkCanceled();
+          if (!rawOrigin) { await speakText('I missed that. What was the origin city again?'); checkCanceled(); continue; }
+          if (['cancel','stop','exit'].indexOf(rawOrigin.toLowerCase()) !== -1) {
+            await speakText('Voice process canceled.');
+            panel.innerHTML = 'Voice process canceled.';
+            return { status: 'canceled' };
+          }
+          var originGeo = await geocode(rawOrigin);
+          checkCanceled();
+          if (!originGeo) { await speakText("I couldn't find a city matching " + rawOrigin + ". Let's try again."); checkCanceled(); continue; }
+
+          var originShort = originGeo.display_name.split(',')[0];
+          await speakText('Did you mean ' + originShort + '?');
+          checkCanceled();
+          panel.innerHTML = '🎙️ Listening for confirmation... <span style="font-size:11px;color:#999;">(tap mic to cancel)</span>';
+          var originConf = await recognizeSpeechSingle(6000);
+          checkCanceled();
+          if (!originConf || containsAny(originConf, YES_WORDS) || originConf.toLowerCase().indexOf('yes') !== -1) {
+            originData = { lat: originGeo.lat, lng: originGeo.lon, address: originGeo.display_name, short: originShort };
+          } else if (containsAny(originConf, NO_WORDS)) {
+            await speakText("Let's retry the origin.");
+            checkCanceled();
+          } else {
+            originData = { lat: originGeo.lat, lng: originGeo.lon, address: originGeo.display_name, short: originShort };
+          }
+        }
+
+        var destData = null;
+        while (!destData) {
+          await speakText('What is the destination city?');
+          checkCanceled();
+          panel.innerHTML = '🎙️ Listening for the destination city... <span style="font-size:11px;color:#999;">(tap mic to cancel)</span>';
+          var rawDest = await recognizeSpeechSingle(8000);
+          checkCanceled();
+          if (!rawDest) { await speakText('I missed that. What was the destination city again?'); checkCanceled(); continue; }
+          if (['cancel','stop','exit'].indexOf(rawDest.toLowerCase()) !== -1) {
+            await speakText('Voice process canceled.');
+            panel.innerHTML = 'Voice process canceled.';
+            return { status: 'canceled' };
+          }
+          var destGeo = await geocode(rawDest);
+          checkCanceled();
+          if (!destGeo) { await speakText("I couldn't find a city matching " + rawDest + ". Let's try again."); checkCanceled(); continue; }
+
+          var destShort = destGeo.display_name.split(',')[0];
+          await speakText('Did you mean ' + destShort + '?');
+          checkCanceled();
+          panel.innerHTML = '🎙️ Listening for confirmation... <span style="font-size:11px;color:#999;">(tap mic to cancel)</span>';
+          var destConf = await recognizeSpeechSingle(6000);
+          checkCanceled();
+          if (!destConf || containsAny(destConf, YES_WORDS) || destConf.toLowerCase().indexOf('yes') !== -1) {
+            destData = { lat: destGeo.lat, lng: destGeo.lon, address: destGeo.display_name, short: destShort };
+          } else if (containsAny(destConf, NO_WORDS)) {
+            await speakText("Let's retry the destination.");
+            checkCanceled();
+          } else {
+            destData = { lat: destGeo.lat, lng: destGeo.lon, address: destGeo.display_name, short: destShort };
+          }
+        }
+
+        await speakText('Got it. Plotting route from ' + originData.short + ' to ' + destData.short + '.');
+        return {
+          status: 'ok',
+          heard: originData.short + ' to ' + destData.short,
+          origin: originData,
+          destination: destData,
+          origin_short: originData.short,
+          destination_short: destData.short
+        };
+      } catch (e) {
+        if (e instanceof VoiceCanceledError) {
+          panel.innerHTML = 'Voice process canceled.';
+          return { status: 'canceled' };
+        }
+        throw e;
+      }
+    }
+
+    var layerOSM = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd', maxZoom: 20
+    });
+    var layerSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Tiles &copy; Esri' });
+    var layerTerrain = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { attribution: 'Map data &copy; OpenTopoMap' });
+    var layerBiking = L.tileLayer('https://{s}.tile-cyclosm.openstreetmap.fr/cyclosm/{z}/{x}/{y}.png', { attribution: 'CyclOSM layout' });
+
+    var map = L.map('map', { layers: [layerOSM] }).setView([39.8283, -98.5795], 4);
+
+    var markerA = null, markerB = null, routeGroup = null;
+    var cachedRouteGeometry = null, cachedFlightLine = null;
+    var panel = document.getElementById('panel');
+    var voiceBtn = document.getElementById('voiceBtn');
+
+    var clickState = 0;
+    var temporaryOriginCoords = null;
+    var showTrafficColors = false;
+    var showFlightPath = true;
+
+    function formatTime(totalMinutes) {
+      if (totalMinutes >= 60) { return Math.floor(totalMinutes / 60) + 'h ' + (totalMinutes % 60) + 'm'; }
+      return totalMinutes + 'm';
+    }
+
+    function drawRoutes(a, b, heardText, aShortName, bShortName) {
+      panel.innerHTML = 'Calculating optimal driving tracks...';
+      var url = 'https://router.project-osrm.org/route/v1/driving/' + a.lng + ',' + a.lat + ';' + b.lng + ',' + b.lat + '?overview=full&geometries=geojson';
+
+      fetch(url).then(function(res) { return res.json(); }).then(function(data) {
+        if (data.code !== 'Ok' || !data.routes.length) { throw new Error('Route lookup failed'); }
+        var route = data.routes[0];
+        var driveMiles = route.distance / 1609.344;
+        var baseMinutes = Math.round(route.duration / 60);
+
+        if (driveMiles > 50) {
+          var impliedMph = driveMiles / (baseMinutes / 60);
+          if (impliedMph < 58) {
+            var calibratedMinutes = Math.round((driveMiles / 65) * 60);
+            baseMinutes = Math.min(baseMinutes, calibratedMinutes);
+          }
+        }
+
+        var latlngs = route.geometry.coordinates.map(function(c) { return [c[1], c[0]]; });
+
+        if (routeGroup) { map.removeLayer(routeGroup); }
+        routeGroup = L.featureGroup().addTo(map);
+
+        cachedRouteGeometry = [];
+        var colors = ['#2ecc71', '#f1c40f', '#e74c3c'];
+        var segmentLength = Math.max(1, Math.floor(latlngs.length / 8));
+        var numChunks = Math.max(1, Math.ceil((latlngs.length - 1) / segmentLength));
+        var chunkMinutes = baseMinutes / numChunks;
+        var delayMinutes = 0;
+        var currentTraffic = 0;
+
+        for (var i = 0; i < latlngs.length - 1; i++) {
+          if (i % segmentLength === 0) {
+            var rand = Math.random();
+            currentTraffic = rand < 0.60 ? 0 : (rand < 0.85 ? 1 : 2);
+            if (currentTraffic === 1) { delayMinutes += Math.max(1, Math.round(chunkMinutes * 0.15)); }
+            if (currentTraffic === 2) { delayMinutes += Math.max(2, Math.round(chunkMinutes * 0.45)); }
+          }
+          var pl = L.polyline([latlngs[i], latlngs[i+1]], { color: showTrafficColors ? colors[currentTraffic] : '#2b6cb0', weight: 5 });
+          pl.addTo(routeGroup);
+          cachedRouteGeometry.push({ line: pl, trafficColor: colors[currentTraffic] });
+        }
+
+        delayMinutes = Math.min(delayMinutes, Math.round(baseMinutes * 0.20));
+
+        var flight = getFlightDetails(a.lat, a.lng, b.lat, b.lng);
+        var aptA = flight.origin_airport, aptB = flight.dest_airport;
+        cachedFlightLine = L.polyline([[aptA.lat, aptA.lon], [aptB.lat, aptB.lon]], { color: '#7c3aed', weight: 4, dashArray: '8, 8' });
+
+        if (showFlightPath) { cachedFlightLine.addTo(routeGroup); }
+
+        lastRouteSummary = { driveMiles: driveMiles, baseMinutes: baseMinutes, delayMinutes: delayMinutes, flight: flight };
+        renderPanelSummary();
+
+        map.fitBounds(routeGroup.getBounds(), { padding: [50, 50] });
+        if (aShortName && bShortName) {
+          speakText('Calculated distance from ' + aShortName + ' to ' + bShortName + '. Flight time is roughly ' + flight.flight_time_str + '.');
+        }
+      }).catch(function() { panel.innerHTML = 'Could not generate dynamic routing links information.'; });
+    }
+
+    var lastRouteSummary = null;
+    function renderPanelSummary() {
+      if (!lastRouteSummary) { return; }
+      var driveMiles = lastRouteSummary.driveMiles;
+      var baseMinutes = lastRouteSummary.baseMinutes;
+      var delayMinutes = showTrafficColors ? lastRouteSummary.delayMinutes : 0;
+      var flight = lastRouteSummary.flight;
+      var aptA = flight.origin_airport, aptB = flight.dest_airport;
+
+      var totalMinutes = baseMinutes + delayMinutes;
+      var driveTimeStr = formatTime(totalMinutes);
+      var delayHtml = delayMinutes > 0
+        ? ' <span style="color:#e74c3c; font-weight:bold;">(incl. ' + delayMinutes + 'm simulated traffic)</span>'
+        : (showTrafficColors ? ' <span style="color:#2ecc71; font-weight:bold;">(Clear)</span>' : '');
+
+      panel.innerHTML =
+        '🚗 Drive: <b>' + driveMiles.toFixed(1) + ' mi</b> | Time: <b>' + driveTimeStr + '</b>' + delayHtml + '<br>' +
+        '✈️ Flight: <b>' + flight.flight_miles + ' mi</b> | Time: <b>' + flight.flight_time_str + '</b> (' + aptA.iata + ' ➔ ' + aptB.iata + ')<br>' +
+        '<span style="font-size:11px;color:#666;">Airports: ' + aptA.iata + ' (' + flight.origin_to_airport_miles + 'mi away) | ' + aptB.iata + ' (' + flight.dest_to_airport_miles + 'mi away)</span>';
+    }
+
+    function refreshRouteFromMarkers() {
+      if (!markerA || !markerB) { return; }
+      var coordA = markerA.getLatLng();
+      var coordB = markerB.getLatLng();
+      panel.innerHTML = "🔄 Resolving location names...";
+      Promise.all([
+        reverseGeocode(coordA.lat, coordA.lng),
+        reverseGeocode(coordB.lat, coordB.lng)
+      ]).then(function(results) {
+        markerA.bindPopup(results[0].full);
+        markerB.bindPopup(results[1].full);
+        drawRoutes(coordA, coordB, null, results[0].short, results[1].short);
+      });
+    }
+
+    function setPointsAndRoute(aLatLng, bLatLng, aLabel, bLabel, heardText, aShortName, bShortName) {
+      if (markerA) { map.removeLayer(markerA); }
+      if (markerB) { map.removeLayer(markerB); }
+      if (routeGroup) { map.removeLayer(routeGroup); }
+
+      markerA = L.marker(aLatLng, { draggable: true }).addTo(map).bindPopup(aLabel);
+      markerB = L.marker(bLatLng, { draggable: true }).addTo(map).bindPopup(bLabel);
+      markerA.on('dragend', refreshRouteFromMarkers);
+      markerB.on('dragend', refreshRouteFromMarkers);
+      drawRoutes(L.latLng(aLatLng), L.latLng(bLatLng), heardText, aShortName, bShortName);
+    }
+
+    map.on('click', function(e) {
+      var lat = e.latlng.lat, lng = e.latlng.lng;
+
+      if (clickState === 0) {
+        if (markerA) { map.removeLayer(markerA); }
+        if (markerB) { map.removeLayer(markerB); }
+        if (routeGroup) { map.removeLayer(routeGroup); }
+
+        temporaryOriginCoords = e.latlng;
+        markerA = L.marker(temporaryOriginCoords, { draggable: true }).addTo(map);
+        markerA.on('dragend', function() { temporaryOriginCoords = markerA.getLatLng(); });
+        panel.innerHTML = "📍 Origin set! Click anywhere else on the map to choose your <b>Destination</b>. (You can also drag the pin to fine-tune it.)";
+        clickState = 1;
+      } else {
+        panel.innerHTML = "🔄 Resolving location names...";
+        var coordA = temporaryOriginCoords;
+        var coordB = e.latlng;
+        clickState = 0;
+
+        Promise.all([
+          reverseGeocode(coordA.lat, coordA.lng),
+          reverseGeocode(coordB.lat, coordB.lng)
+        ]).then(function(results) {
+          markerB = L.marker(coordB, { draggable: true }).addTo(map).bindPopup(results[1].full);
+          markerA.bindPopup(results[0].full);
+          markerA.off('dragend');
+          markerA.on('dragend', refreshRouteFromMarkers);
+          markerB.on('dragend', refreshRouteFromMarkers);
+          drawRoutes(coordA, coordB, null, results[0].short, results[1].short);
+        });
+      }
+    });
+
+    var layersBtn = document.getElementById('layersBtn'), layersPanel = document.getElementById('layersPanel');
+    layersBtn.addEventListener('click', function() { layersPanel.style.display = layersPanel.style.display === 'block' ? 'none' : 'block'; });
+    document.getElementById('layersCloseBtn').addEventListener('click', function() { layersPanel.style.display = 'none'; });
+
+    document.getElementById('typeDefault').addEventListener('click', function() {
+      this.classList.add('active'); document.getElementById('typeSatellite').classList.remove('active');
+      document.getElementById('optTerrain').classList.remove('active'); document.getElementById('optBiking').classList.remove('active');
+      map.removeLayer(layerSatellite); map.removeLayer(layerTerrain); map.removeLayer(layerBiking); map.addLayer(layerOSM);
+    });
+    document.getElementById('typeSatellite').addEventListener('click', function() {
+      this.classList.add('active'); document.getElementById('typeDefault').classList.remove('active');
+      document.getElementById('optTerrain').classList.remove('active'); document.getElementById('optBiking').classList.remove('active');
+      map.removeLayer(layerOSM); map.removeLayer(layerTerrain); map.removeLayer(layerBiking); map.addLayer(layerSatellite);
+    });
+    document.getElementById('optTerrain').addEventListener('click', function() {
+      document.getElementById('typeDefault').classList.remove('active'); document.getElementById('typeSatellite').classList.remove('active');
+      document.getElementById('optBiking').classList.remove('active'); this.classList.add('active');
+      map.removeLayer(layerOSM); map.removeLayer(layerSatellite); map.removeLayer(layerBiking); map.addLayer(layerTerrain);
+    });
+    document.getElementById('optBiking').addEventListener('click', function() {
+      document.getElementById('typeDefault').classList.remove('active'); document.getElementById('typeSatellite').classList.remove('active');
+      document.getElementById('optTerrain').classList.remove('active'); this.classList.add('active');
+      map.removeLayer(layerOSM); map.removeLayer(layerSatellite); map.removeLayer(layerTerrain); map.addLayer(layerBiking);
+    });
+
+    var optTraffic = document.getElementById('optTraffic');
+    optTraffic.addEventListener('click', function() {
+      showTrafficColors = !showTrafficColors;
+      if (showTrafficColors) {
+        this.classList.add('active');
+        document.getElementById('legClear').style.opacity = '1'; document.getElementById('legMod').style.opacity = '1'; document.getElementById('legHeavy').style.opacity = '1';
+      } else {
+        this.classList.remove('active');
+        document.getElementById('legClear').style.opacity = '0.3'; document.getElementById('legMod').style.opacity = '0.3'; document.getElementById('legHeavy').style.opacity = '0.3';
+      }
+      if (cachedRouteGeometry) {
+        cachedRouteGeometry.forEach(function(seg) { seg.line.setStyle({ color: showTrafficColors ? seg.trafficColor : '#2b6cb0' }); });
+      }
+      renderPanelSummary();
+    });
+
+    var optTravelTime = document.getElementById('optTravelTime');
+    optTravelTime.addEventListener('click', function() {
+      showFlightPath = !showFlightPath;
+      if (showFlightPath) {
+        this.classList.add('active'); document.getElementById('legFlight').style.opacity = '1';
+        if (cachedFlightLine && routeGroup) { map.addLayer(cachedFlightLine); }
+      } else {
+        this.classList.remove('active'); document.getElementById('legFlight').style.opacity = '0.3';
+        if (cachedFlightLine && routeGroup) { map.removeLayer(cachedFlightLine); }
+      }
+    });
+
+    ['optTransit', 'optStreet', 'optWildfires', 'optMeasure'].forEach(function(id) {
+      document.getElementById(id).addEventListener('click', function() { alert("This specific map filter requires a commercial Google Enterprise API license Key layer."); });
+    });
+
+    voiceBtn.addEventListener('click', function() {
+      if (voiceFlowActive) {
+        voiceFlowCanceled = true;
+        if (currentRecognition) { try { currentRecognition.abort(); } catch (e) {} }
+        if (window.speechSynthesis) { window.speechSynthesis.cancel(); }
+        return;
+      }
+
+      voiceFlowActive = true;
+      voiceFlowCanceled = false;
+      voiceBtn.classList.add('voice-active');
+      voiceBtn.title = 'Tap to cancel';
+      panel.innerHTML = '🎙️ Conversation workflow activated. Say your origin city when prompted. <span style="font-size:11px;color:#999;">(tap mic to cancel)</span>';
+
+      startConversationalFlow().then(function(res) {
+        voiceFlowActive = false;
+        voiceFlowCanceled = false;
+        voiceBtn.classList.remove('voice-active');
+        voiceBtn.title = 'Voice workflow';
+        if (res && res.status === 'ok') {
+          clickState = 0;
+          setPointsAndRoute([res.origin.lat, res.origin.lng], [res.destination.lat, res.destination.lng], res.origin.address, res.destination.address, res.heard, res.origin_short, res.destination_short);
+        } else if (res && res.status === 'canceled') {
+          panel.innerHTML = 'Voice process canceled. Click the map, or tap the mic to try again.';
+        } else {
+          panel.innerHTML = panel.innerHTML || 'Click the map, or tap the mic to try voice controls.';
+        }
+      }).catch(function() {
+        voiceFlowActive = false;
+        voiceFlowCanceled = false;
+        voiceBtn.classList.remove('voice-active');
+        voiceBtn.title = 'Voice workflow';
+      });
+    });
+
+    var cityBtn = document.getElementById('cityBtn'), cityPanel = document.getElementById('cityPanel');
+    var fromInput = document.getElementById('fromInput'), toInput = document.getElementById('toInput');
+    var fromSuggestions = document.getElementById('fromSuggestions'), toSuggestions = document.getElementById('toSuggestions');
+    var fromSelected = null, toSelected = null;
+
+    cityBtn.addEventListener('click', function() { cityPanel.style.display = cityPanel.style.display === 'block' ? 'none' : 'block'; });
+    document.getElementById('cityCancelBtn').addEventListener('click', function() { cityPanel.style.display = 'none'; });
+
+    function debounce(fn, delayMs) {
+      var timer = null;
+      return function() {
+        var args = arguments, ctx = this;
+        clearTimeout(timer);
+        timer = setTimeout(function() { fn.apply(ctx, args); }, delayMs);
+      };
+    }
+
+    function bindAutocomplete(input, list, callback) {
+      var doSearch = debounce(function() {
+        var q = input.value;
+        if (q.length < 2) { list.style.display = 'none'; return; }
+        searchPlaces(q, 8).then(function(data) {
+          list.innerHTML = '';
+          if (!data.length) { list.style.display = 'none'; return; }
+          data = rankResults(data, q).slice(0, 6);
+          data.forEach(function(item) {
+            var d = document.createElement('div');
+            d.className = 'suggestion-item'; d.textContent = item.display_name;
+            d.addEventListener('click', function() {
+              input.value = item.display_name; list.style.display = 'none';
+              callback({ lat: item.lat, lon: item.lon, display_name: item.display_name });
+            });
+            list.appendChild(d);
+          });
+          list.style.display = 'block';
+        });
+      }, 300);
+      input.addEventListener('input', doSearch);
+    }
+    bindAutocomplete(fromInput, fromSuggestions, function(res) { fromSelected = res; });
+    bindAutocomplete(toInput, toSuggestions, function(res) { toSelected = res; });
+
+    document.getElementById('cityGoBtn').addEventListener('click', function() {
+      if (!fromSelected || !toSelected) { return; }
+      cityPanel.style.display = 'none';
+      clickState = 0;
+      setPointsAndRoute([fromSelected.lat, fromSelected.lon], [toSelected.lat, toSelected.lon], fromSelected.display_name, toSelected.display_name, null, fromSelected.display_name.split(',')[0], toSelected.display_name.split(',')[0]);
+    });
+
+    panel.innerHTML = browserSupportsSTT()
+      ? '🗺️ Click map twice to calculate routes, click the layer icon for control panels!'
+      : '🗺️ Click map twice, or tap the edit icon to type two cities. Tap the layer icon for map controls.';
+  </script>
+</body>
+</html>
